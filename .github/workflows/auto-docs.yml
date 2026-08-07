@@ -21,17 +21,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout docs
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Checkout glific (backend, read-only context)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: glific/glific
           path: repos/glific
           fetch-depth: 1
 
       - name: Checkout glific-frontend (read-only context)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: glific/glific-frontend
           path: repos/glific-frontend
@@ -131,9 +131,9 @@ jobs:
 
       - name: Set up Node
         if: steps.guardrail.outputs.skip == 'false'
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v6
         with:
-          node-version: 18
+          node-version: 24
           cache: yarn
 
       - name: Install dependencies
