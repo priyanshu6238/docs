@@ -68,10 +68,44 @@ function relativeImagePath(docFile, imagePath) {
   return rel.startsWith(".") ? rel : `./${rel}`;
 }
 
+// PhoneInput (react-phone-input-2, country="in") prepends "+91" asynchronously
+// after mount and re-derives the dial code from whatever's already in the
+// field — a plain .fill() clears it first and breaks that derivation, so the
+// form silently never validates. Ported from scripts/screenshot.js's proven
+// fillPhone()/authenticate(): wait for the dial code to land, then click +
+// press End + type only the local part, never clearing the field.
+const DIAL_CODE = "91";
+function localPhone(raw) {
+  return raw.replace(/\D/g, "").slice(-10);
+}
+
 async function login(page) {
+  const local = localPhone(PHONE);
+
   await page.goto(`${STAGING_URL}/login`, { waitUntil: "networkidle" });
-  await page.fill('input[name="phoneNumber"]', PHONE);
+  await page.waitForSelector('[data-testid="AuthContainer"]', { timeout: 10_000 });
+
+  const phoneInput = page.locator('input[name="phoneNumber"]');
+  await phoneInput.waitFor({ state: "visible" });
+  await page.waitForFunction(
+    () => {
+      const el = document.querySelector('input[name="phoneNumber"]');
+      return !!el && /^\+\d/.test(el.value);
+    },
+    { timeout: 5_000 }
+  );
+
+  await phoneInput.click();
+  await phoneInput.press("End");
+  await phoneInput.pressSequentially(local);
+
+  const value = await phoneInput.inputValue();
+  if (value !== `+${DIAL_CODE}${local}`) {
+    throw new Error(`Phone field shows "${value}", expected "+${DIAL_CODE}${local}"`);
+  }
+
   await page.fill('input[name="password"]', PASSWORD);
+
   try {
     await Promise.all([
       page.waitForURL((url) => !url.pathname.includes("/login"), {
