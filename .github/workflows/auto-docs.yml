@@ -80,8 +80,8 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: ${{ steps.build_prompt.outputs.prompt }}
           claude_args: |
-            --max-turns 15
-            --allowedTools "Read,Glob,Grep,Edit,Write"
+            --max-turns 35
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(git log:*),Bash(git show:*),Bash(git diff:*),Bash(git branch:*)"
 
       - name: Remove cloned context repos (never committed, not screenshotted)
         run: rm -rf repos
