@@ -31,13 +31,25 @@ function requireEnv(name) {
 }
 
 function changedDocFiles() {
-  const output = execSync("git status --porcelain -- docs", {
+  // -z (not plain --porcelain) because doc folder names contain spaces, e.g.
+  // "docs/3. Product Features/..." — git double-quotes any path containing a
+  // space in the default format, which silently broke a plain line-slice
+  // parse (the trailing quote meant paths never matched .endsWith(".md")).
+  // -z disables that quoting and NUL-delimits entries instead.
+  const output = execSync("git status --porcelain -z -- docs", {
     encoding: "utf8",
   });
-  return output
-    .split("\n")
-    .map((line) => line.slice(3).trim())
-    .filter((path) => path.endsWith(".md") || path.endsWith(".mdx"));
+  const entries = output.split("\0").filter(Boolean);
+  const files = [];
+  for (let i = 0; i < entries.length; i++) {
+    const status = entries[i].slice(0, 2);
+    const path = entries[i].slice(3);
+    if (/^[RC]/.test(status)) {
+      i += 1; // renames/copies: skip the paired old-path entry
+    }
+    files.push(path);
+  }
+  return files.filter((path) => path.endsWith(".md") || path.endsWith(".mdx"));
 }
 
 function findPlaceholders(files) {
