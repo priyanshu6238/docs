@@ -1,0 +1,160 @@
+name: Auto Docs (label-triggered)
+
+# Fires when an issue is labeled "auto-docs". Investigates the ticket against
+# the glific and glific-frontend repos, updates the relevant doc page(s) with
+# Claude, captures a fresh screenshot of the real app for any page that needs
+# one, and opens a PR for human review. Never auto-merges.
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  auto-docs:
+    if: github.event.label.name == 'auto-docs' && github.event.issue.pull_request == null
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout docs
+        uses: actions/checkout@v4
+
+      - name: Checkout glific (backend, read-only context)
+        uses: actions/checkout@v4
+        with:
+          repository: glific/glific
+          path: repos/glific
+          fetch-depth: 1
+
+      - name: Checkout glific-frontend (read-only context)
+        uses: actions/checkout@v4
+        with:
+          repository: glific/glific-frontend
+          path: repos/glific-frontend
+          fetch-depth: 1
+
+      - name: Build prompt
+        id: build_prompt
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          envsubst < .github/scripts/docs-agent-prompt.md > /tmp/prompt.md
+          {
+            echo 'prompt<<EOF_PROMPT_9f3a1c'
+            cat /tmp/prompt.md
+            echo 'EOF_PROMPT_9f3a1c'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run Claude doc-authoring step
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: ${{ steps.build_prompt.outputs.prompt }}
+          claude_args: |
+            --max-turns 15
+            --allowedTools "Read,Glob,Grep,Edit,Write"
+
+      - name: Remove cloned context repos (never committed, not screenshotted)
+        run: rm -rf repos
+
+      - name: Guardrail - confirm Claude only touched docs/ and pr-body.md
+        id: guardrail
+        run: |
+          # cut -c4- (not awk) because doc folder names contain spaces, e.g.
+          # "docs/3. Product Features/..." — awk would truncate at the first space.
+          changed=$(git status --porcelain | cut -c4-)
+          bad=0
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              *' -> '*) f="${f#*-> }" ;; # renames: check the destination path
+            esac
+            case "$f" in
+              docs/*|pr-body.md) ;;
+              *)
+                echo "::error::Unexpected file changed outside docs/: $f"
+                bad=1
+                ;;
+            esac
+          done <<< "$changed"
+          if [ "$bad" = "1" ]; then
+            echo "Claude's changes touched files outside the allowed scope. Aborting without committing." >&2
+            exit 1
+          fi
+
+          if [ -f pr-body.md ] && [ "$(head -n1 pr-body.md)" = "SKIP" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Comment when skipped
+        if: steps.guardrail.outputs.skip == 'true'
+        run: |
+          reason=$(tail -n +2 pr-body.md)
+          gh issue comment "${{ github.event.issue.number }}" --body "Auto-docs pipeline ran but made no changes: ${reason:-no docs update was needed for this ticket.}"
+          rm -f pr-body.md
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Set up Node
+        if: steps.guardrail.outputs.skip == 'false'
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          cache: yarn
+
+      - name: Install dependencies
+        if: steps.guardrail.outputs.skip == 'false'
+        run: yarn install --frozen-lockfile
+
+      - name: Install Playwright browser
+        if: steps.guardrail.outputs.skip == 'false'
+        run: npx playwright install --with-deps chromium
+
+      - name: Take screenshots and rewrite placeholders
+        if: steps.guardrail.outputs.skip == 'false'
+        env:
+          GLIFIC_STAGING_URL: ${{ secrets.GLIFIC_STAGING_URL }}
+          GLIFIC_STAGING_PHONE: ${{ secrets.GLIFIC_STAGING_PHONE }}
+          GLIFIC_STAGING_PASSWORD: ${{ secrets.GLIFIC_STAGING_PASSWORD }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: node .github/scripts/take-screenshots.mjs
+
+      - name: Open PR
+        if: steps.guardrail.outputs.skip == 'false'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          branch="docs/auto-${ISSUE_NUMBER}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add docs
+          [ -d static/img/generated ] && git add static/img/generated
+          git commit -m "docs: auto-update from issue #${ISSUE_NUMBER}"
+          git push -u origin "$branch"
+
+          {
+            cat pr-body.md
+            echo ""
+            echo "Closes #${ISSUE_NUMBER}"
+            echo ""
+            echo "_Opened automatically by the auto-docs pipeline. Please review before merging._"
+          } > /tmp/pr-body-final.md
+          rm -f pr-body.md
+
+          gh pr create \
+            --title "docs: update from issue #${ISSUE_NUMBER}" \
+            --body-file /tmp/pr-body-final.md \
+            --label auto-docs \
+            --base main \
+            --head "$branch"
+
+          gh issue comment "$ISSUE_NUMBER" --body "Opened a docs PR for this: $(gh pr view "$branch" --json url -q .url)"

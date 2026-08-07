@@ -1,6 +1,9 @@
 # Dependencies
 /node_modules
 
+# Sibling product repos cloned by the auto-docs workflow for context only
+/repos
+
 .env
 
 # Production

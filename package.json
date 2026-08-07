@@ -15,7 +15,8 @@
     "typecheck": "tsc",
     "screenshot": "node scripts/screenshot.js",
     "screenshot:video": "node scripts/screenshot.js --video",
-    "screenshot:install": "npx playwright install chromium"
+    "screenshot:install": "npx playwright install chromium",
+    "auto-docs:screenshot": "node .github/scripts/take-screenshots.mjs"
   },
   "dependencies": {
     "@cmfcmf/docusaurus-search-local": "^0.11.0",
