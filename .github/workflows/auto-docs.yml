@@ -89,14 +89,17 @@ jobs:
       - name: Guardrail - confirm Claude only touched docs/ and pr-body.md
         id: guardrail
         run: |
-          # cut -c4- (not awk) because doc folder names contain spaces, e.g.
-          # "docs/3. Product Features/..." — awk would truncate at the first space.
-          changed=$(git status --porcelain | cut -c4-)
+          # -z (not plain --porcelain) because doc folder names contain spaces,
+          # e.g. "docs/3. Product Features/..." — git double-quotes any path
+          # containing a space in the default format, which broke a plain
+          # `cut`/case-glob parse (the quote itself doesn't match "docs/*").
+          # -z disables that quoting and NUL-delimits entries instead.
           bad=0
-          while IFS= read -r f; do
-            [ -z "$f" ] && continue
-            case "$f" in
-              *' -> '*) f="${f#*-> }" ;; # renames: check the destination path
+          while IFS= read -r -d '' entry; do
+            status="${entry:0:2}"
+            f="${entry:3}"
+            case "$status" in
+              R*|C*) read -r -d '' _orig ;; # renames/copies: consume the paired old-path entry
             esac
             case "$f" in
               docs/*|pr-body.md) ;;
@@ -105,7 +108,7 @@ jobs:
                 bad=1
                 ;;
             esac
-          done <<< "$changed"
+          done < <(git status --porcelain -z)
           if [ "$bad" = "1" ]; then
             echo "Claude's changes touched files outside the allowed scope. Aborting without committing." >&2
             exit 1
