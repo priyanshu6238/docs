@@ -37,6 +37,29 @@ jobs:
           path: repos/glific-frontend
           fetch-depth: 1
 
+      - name: Check out any PR branches referenced in the issue
+        # Tickets sometimes point at a feature that's only on an unmerged PR
+        # (e.g. "not merged to master, already deployed to staging") — check
+        # that branch out in place of the default branch so Claude actually
+        # sees the code being described.
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          frontend_pr=$(printf '%s' "$ISSUE_BODY" | grep -oE 'github\.com/glific/glific-frontend/pull/[0-9]+' | grep -oE '[0-9]+$' | head -1 || true)
+          backend_pr=$(printf '%s' "$ISSUE_BODY" | grep -oE 'github\.com/glific/glific/pull/[0-9]+' | grep -oE '[0-9]+$' | head -1 || true)
+
+          if [ -n "$frontend_pr" ]; then
+            echo "Issue references glific-frontend PR #$frontend_pr — checking that out instead of the default branch"
+            git -C repos/glific-frontend fetch --depth 1 origin "refs/pull/${frontend_pr}/head"
+            git -C repos/glific-frontend checkout FETCH_HEAD
+          fi
+
+          if [ -n "$backend_pr" ]; then
+            echo "Issue references glific PR #$backend_pr — checking that out instead of the default branch"
+            git -C repos/glific fetch --depth 1 origin "refs/pull/${backend_pr}/head"
+            git -C repos/glific checkout FETCH_HEAD
+          fi
+
       - name: Build prompt
         id: build_prompt
         env:
