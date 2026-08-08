@@ -86,7 +86,13 @@ jobs:
           PR_NUMBER: ${{ github.event.issue.number }}
           COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
-          envsubst < .github/scripts/docs-agent-comment-prompt.md > /tmp/prompt.md
+          # Fetch the template from main rather than trusting it's on the PR's
+          # own branch — a PR opened before this workflow existed won't have
+          # it. Write to /tmp so it never touches this checkout's working
+          # tree, which the guardrail step checks is untouched outside docs/.
+          git fetch --depth 1 origin main
+          git show origin/main:.github/scripts/docs-agent-comment-prompt.md > /tmp/comment-prompt-template.md
+          envsubst < /tmp/comment-prompt-template.md > /tmp/prompt.md
           {
             echo 'prompt<<EOF_PROMPT_9f3a1c'
             cat /tmp/prompt.md
