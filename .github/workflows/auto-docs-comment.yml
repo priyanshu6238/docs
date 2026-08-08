@@ -213,7 +213,17 @@ jobs:
           GLIFIC_STAGING_PHONE: ${{ secrets.GLIFIC_STAGING_PHONE }}
           GLIFIC_STAGING_PASSWORD: ${{ secrets.GLIFIC_STAGING_PASSWORD }}
           ISSUE_NUMBER: ${{ steps.pr.outputs.number }}
-        run: node .github/scripts/take-screenshots.mjs
+        run: |
+          # Same reasoning as the prompt template in "Build prompt": the
+          # script actually committed on this PR's branch can be an older,
+          # possibly-buggy version — run whatever's current on main instead
+          # of trusting the PR branch's copy. Safe to overwrite in place
+          # since the guardrail check has already run by this point, and
+          # "Commit and push" only ever `git add`s docs/ and
+          # static/img/generated/, never .github/.
+          git fetch --depth 1 origin main
+          git show origin/main:.github/scripts/take-screenshots.mjs > .github/scripts/take-screenshots.mjs
+          node .github/scripts/take-screenshots.mjs
 
       - name: Commit and push to the PR branch
         if: steps.pr.outputs.is_auto_docs == 'true' && steps.guardrail.outputs.has_changes == 'true'
@@ -239,8 +249,14 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           COMMENT_ID: ${{ github.event.comment.id }}
         run: |
-          if [ "${{ job.status }}" = "success" ] && [ -f comment-response.md ]; then
+          if [ -f comment-response.md ]; then
             body_file=comment-response.md
+          elif [ "${{ job.status }}" = "success" ]; then
+            # Claude finished without error but didn't write the file it was
+            # asked to — don't claim "the run failed" when it didn't; that's
+            # just false and has actually happened in testing.
+            printf '%s' "I finished looking at that but didn't leave a written explanation — check the \"Auto Docs (PR feedback)\" Actions run on this repo for what I actually did (most likely: no doc change was needed)." > /tmp/fallback-reply.md
+            body_file=/tmp/fallback-reply.md
           else
             printf '%s' 'I wasn'"'"'t able to apply that request — the run failed before finishing. Check the "Auto Docs (PR feedback)" Actions run on this repo for details. No changes were made to this PR.' > /tmp/fallback-reply.md
             body_file=/tmp/fallback-reply.md
