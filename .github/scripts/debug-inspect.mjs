@@ -41,6 +41,12 @@ async function main() {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 
+  const consoleMessages = [];
+  page.on("console", (msg) => consoleMessages.push(`[${msg.type()}] ${msg.text()}`));
+  page.on("pageerror", (err) => consoleMessages.push(`[pageerror] ${err.message}`));
+  const failedRequests = [];
+  page.on("requestfailed", (req) => failedRequests.push(`${req.url()} -- ${req.failure()?.errorText}`));
+
   try {
     await login(page);
     console.log("Logged in. URL:", page.url());
@@ -64,10 +70,17 @@ async function main() {
       return;
     }
 
+    consoleMessages.length = 0;
+    failedRequests.length = 0;
     await page.goto(`${STAGING_URL}/flow/configure/${flowUuid.uuid}`, { waitUntil: "load" });
-    await page.waitForTimeout(5_000);
+    await page.waitForTimeout(8_000);
     console.log("=== flow editor URL ===", page.url());
     await page.screenshot({ path: "flow-editor-canvas.png", fullPage: false });
+
+    console.log("=== console messages during flow editor nav ===");
+    console.log(consoleMessages.slice(0, 60).join("\n"));
+    console.log("=== failed requests during flow editor nav ===");
+    console.log(failedRequests.slice(0, 30).join("\n"));
 
     // Try clicking a "Wait for Response" node by its visible text (canvas has
     // no data-testid, but the node label text is real DOM content).
