@@ -75,16 +75,21 @@ async function main() {
     console.log("=== body innerText at landing page (first 500 chars) ===");
     console.log(pageText);
 
-    const results = [];
-    for (const route of ["/flow", "/template", "/speed-send"]) {
-      results.push(await checkRoute(page, route));
-    }
+    // Test theory: repeated hard reloads (page.goto) in quick succession
+    // invalidate the session (single-use refresh-token race?), independent
+    // of role. Go back to /chat via goto, then to /template via a client-side
+    // link click (no hard reload) instead of another goto.
+    await page.goto(`${STAGING_URL}/chat`, { waitUntil: "load" });
+    await page.waitForTimeout(3_000);
+    console.log("=== back on (via goto) ===", page.url());
 
-    if (results.every(Boolean)) {
-      console.log("=== ALL ROUTES REACHABLE ===");
-    } else {
-      console.log("=== SOME ROUTES STILL BLOCKED ===");
-    }
+    await page.click('a[href="/template"]', { force: true, timeout: 8_000 });
+    await page.waitForTimeout(2_000);
+    console.log("=== /template via client-side link click -> URL ===", page.url());
+    console.log(
+      "=== body innerText after client-side nav (first 300 chars) ===",
+      await page.evaluate(() => document.body.innerText.slice(0, 300))
+    );
   } finally {
     await browser.close();
   }
