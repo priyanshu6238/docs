@@ -60,6 +60,24 @@ async function main() {
     });
     console.log("=== Flow links found ===");
     console.log(JSON.stringify(flowLinks, null, 2));
+
+    console.log("=== Page title ===", await page.title());
+
+    const anyLinks = await page.evaluate(() =>
+      Array.from(document.querySelectorAll("a[href]")).slice(0, 20).map((a) => a.getAttribute("href"))
+    );
+    console.log("=== First 20 <a href> on page ===");
+    console.log(JSON.stringify(anyLinks, null, 2));
+
+    const testIds = await page.evaluate(() =>
+      Array.from(document.querySelectorAll("[data-testid]")).slice(0, 40).map((el) => el.getAttribute("data-testid"))
+    );
+    console.log("=== First 40 data-testid on page ===");
+    console.log(JSON.stringify(testIds, null, 2));
+
+    const bodyText = await page.evaluate(() => document.body.innerText.slice(0, 1500));
+    console.log("=== First 1500 chars of body innerText ===");
+    console.log(bodyText);
   } finally {
     await browser.close();
   }
