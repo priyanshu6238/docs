@@ -118,7 +118,12 @@ async function login(page) {
       `Login to staging Glific instance (${STAGING_URL}) did not leave /login within 20s — check GLIFIC_STAGING_PHONE/GLIFIC_STAGING_PASSWORD. Underlying error: ${err.message}`
     );
   }
-  await page.waitForLoadState("networkidle");
+  // Not networkidle: the post-login app (Chat) holds a persistent WebSocket
+  // open for live subscriptions, so "no network activity for 500ms" never
+  // actually happens and this would time out on every run. "load" plus a
+  // fixed settle delay is the reliable option once authenticated.
+  await page.waitForLoadState("load");
+  await page.waitForTimeout(2_000);
 }
 
 async function main() {
@@ -145,7 +150,10 @@ async function main() {
       mkdirSync(outDir, { recursive: true });
 
       console.log(`Capturing ${route} -> ${outPath}`);
-      await page.goto(`${STAGING_URL}${route}`, { waitUntil: "networkidle" });
+      // Same reasoning as login(): this is all post-auth, so the persistent
+      // chat WebSocket means networkidle would never resolve.
+      await page.goto(`${STAGING_URL}${route}`, { waitUntil: "load" });
+      await page.waitForTimeout(2_000);
       await page.screenshot({ path: outPath });
 
       const markdown = `![${slug}](${relativeImagePath(file, outPath)})`;
