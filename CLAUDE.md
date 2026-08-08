@@ -59,6 +59,9 @@ separate `glific/glific` (backend) and `glific/glific-frontend` (frontend) repos
   replaces these after capture. Don't use this placeholder syntax outside that pipeline.
 - `.github/workflows/auto-docs-comment.yml` handles follow-up: commenting `@claude ...`
   on a PR the pipeline opened (must carry the `auto-docs` label, and the commenter needs
-  write access) re-invokes Claude on that PR's branch with the comment as the prompt. It
-  pushes any doc edits directly to the existing branch (no new PR) and replies with what
+  write access) re-invokes Claude on that PR's branch with the comment as the prompt. Works
+  both as a general PR conversation comment and as an inline review comment attached to a
+  specific diff line — in the inline case Claude also gets the file/line/diff hunk as
+  context, and the reply lands in that same inline thread instead of the main conversation.
+  It pushes any doc edits directly to the existing branch (no new PR) and replies with what
   it did. Same `docs/`-only guardrail and screenshot placeholder convention apply.
