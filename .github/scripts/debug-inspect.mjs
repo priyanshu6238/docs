@@ -49,8 +49,15 @@ async function main() {
     await login(page);
     console.log("Logged in. URL:", page.url());
 
-    const roleAfterLogin = await page.evaluate(() => localStorage.getItem("role"));
-    console.log("=== localStorage 'role' right after login ===", roleAfterLogin);
+    const userRoles = await page.evaluate(() => {
+      try {
+        const user = JSON.parse(localStorage.getItem("glific_user") || "null");
+        return user?.roles || user?.accessRoles || user;
+      } catch (e) {
+        return { parseError: String(e), raw: localStorage.getItem("glific_user") };
+      }
+    });
+    console.log("=== glific_user roles/accessRoles ===", JSON.stringify(userRoles, null, 2));
 
     // Just read the flow list straight off the rendered page — no need for
     // the API detour, /flow is reachable now.
