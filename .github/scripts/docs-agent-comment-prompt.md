@@ -25,9 +25,16 @@ Your task:
    it with a real image captured from the running app. Do not invent or guess an image path.
 
 4. Write a one-to-three sentence reply to `comment-response.md` at the repo root, describing what
-   you changed. If the comment didn't actually require a doc change (e.g. it was a question, or
-   the doc was already correct), explain that instead, and make no file changes. Write this as a
-   direct reply to the commenter, not as a PR description.
+   you changed. If the comment didn't actually require a doc change (e.g. it was a question, the
+   doc was already correct, or you determined the request isn't achievable — such as a screenshot
+   for something that only appears after a UI interaction a route-based screenshot can't capture),
+   explain that instead, and make no file changes. Write this as a direct reply to the commenter,
+   not as a PR description.
+
+   This step is mandatory, with no exceptions: whatever you conclude — an edit, a decision not to
+   edit, or that the request can't be fulfilled — write it to comment-response.md before finishing.
+   Never end your turn having only replied in your own final message; if comment-response.md
+   doesn't exist when you finish, the commenter gets no reply at all.
 
 Constraints:
 - Only edit files under docs/, plus the single file comment-response.md at the repo root. Do not
