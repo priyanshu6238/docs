@@ -113,6 +113,21 @@ jobs:
         if: steps.pr.outputs.is_auto_docs == 'true'
         run: rm -rf repos
 
+      - name: Reset action-managed config files (not real edits)
+        # claude-code-action treats a checked-out PR branch as untrusted and
+        # overwrites CLAUDE.md and friends with origin/main's versions before
+        # running, to block prompt-injection via a malicious PR's CLAUDE.md.
+        # That substitution shows up as a working-tree diff whenever the PR
+        # branch's committed version differs from current main (e.g. any
+        # auto-docs PR opened before a later CLAUDE.md edit) — not something
+        # Claude or the commenter asked for, so undo it before the guardrail
+        # runs, or every such PR would false-fail here forever.
+        if: steps.pr.outputs.is_auto_docs == 'true'
+        run: |
+          for f in CLAUDE.md .claude .mcp.json .claude.json .gitmodules .ripgreprc CLAUDE.local.md .husky; do
+            git checkout -- "$f" 2>/dev/null || true
+          done
+
       - name: Guardrail - confirm Claude only touched docs/ and comment-response.md
         if: steps.pr.outputs.is_auto_docs == 'true'
         id: guardrail
