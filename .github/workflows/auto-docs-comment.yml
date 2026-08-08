@@ -213,7 +213,17 @@ jobs:
           GLIFIC_STAGING_PHONE: ${{ secrets.GLIFIC_STAGING_PHONE }}
           GLIFIC_STAGING_PASSWORD: ${{ secrets.GLIFIC_STAGING_PASSWORD }}
           ISSUE_NUMBER: ${{ steps.pr.outputs.number }}
-        run: node .github/scripts/take-screenshots.mjs
+        run: |
+          # Same reasoning as the prompt template in "Build prompt": the
+          # script actually committed on this PR's branch can be an older,
+          # possibly-buggy version — run whatever's current on main instead
+          # of trusting the PR branch's copy. Safe to overwrite in place
+          # since the guardrail check has already run by this point, and
+          # "Commit and push" only ever `git add`s docs/ and
+          # static/img/generated/, never .github/.
+          git fetch --depth 1 origin main
+          git show origin/main:.github/scripts/take-screenshots.mjs > .github/scripts/take-screenshots.mjs
+          node .github/scripts/take-screenshots.mjs
 
       - name: Commit and push to the PR branch
         if: steps.pr.outputs.is_auto_docs == 'true' && steps.guardrail.outputs.has_changes == 'true'
