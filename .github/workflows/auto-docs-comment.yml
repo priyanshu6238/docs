@@ -1,0 +1,184 @@
+name: Auto Docs (PR feedback)
+
+# Fires when someone comments "@claude ..." on a PR the auto-docs pipeline
+# opened. Applies the requested change directly on the PR's existing branch
+# (no new PR) and replies with what it did. Restricted to auto-docs-labeled
+# PRs and to commenters with write access, so a random public comment can't
+# trigger it.
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  respond:
+    if: >
+      github.event.issue.pull_request != null &&
+      contains(github.event.comment.body, '@claude') &&
+      github.event.comment.user.type != 'Bot' &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Look up the PR this comment is on
+        id: pr
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          head_ref=$(gh pr view "$PR_NUMBER" --json headRefName -q .headRefName)
+          is_auto_docs=$(gh pr view "$PR_NUMBER" --json labels -q '[.labels[].name] | any(. == "auto-docs")')
+          echo "head=$head_ref" >> "$GITHUB_OUTPUT"
+          echo "is_auto_docs=$is_auto_docs" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout docs (PR branch)
+        if: steps.pr.outputs.is_auto_docs == 'true'
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.pr.outputs.head }}
+
+      - name: Checkout glific (backend, read-only context)
+        if: steps.pr.outputs.is_auto_docs == 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: glific/glific
+          path: repos/glific
+          fetch-depth: 1
+
+      - name: Checkout glific-frontend (read-only context)
+        if: steps.pr.outputs.is_auto_docs == 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: glific/glific-frontend
+          path: repos/glific-frontend
+          fetch-depth: 1
+
+      - name: Check out any PR branches referenced in the comment
+        if: steps.pr.outputs.is_auto_docs == 'true'
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          frontend_pr=$(printf '%s' "$COMMENT_BODY" | grep -oE 'github\.com/glific/glific-frontend/pull/[0-9]+' | grep -oE '[0-9]+$' | head -1 || true)
+          backend_pr=$(printf '%s' "$COMMENT_BODY" | grep -oE 'github\.com/glific/glific/pull/[0-9]+' | grep -oE '[0-9]+$' | head -1 || true)
+
+          if [ -n "$frontend_pr" ]; then
+            git -C repos/glific-frontend fetch --depth 1 origin "refs/pull/${frontend_pr}/head"
+            git -C repos/glific-frontend checkout FETCH_HEAD
+          fi
+
+          if [ -n "$backend_pr" ]; then
+            git -C repos/glific fetch --depth 1 origin "refs/pull/${backend_pr}/head"
+            git -C repos/glific checkout FETCH_HEAD
+          fi
+
+      - name: Build prompt
+        if: steps.pr.outputs.is_auto_docs == 'true'
+        id: build_prompt
+        env:
+          PR_NUMBER: ${{ github.event.issue.number }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          envsubst < .github/scripts/docs-agent-comment-prompt.md > /tmp/prompt.md
+          {
+            echo 'prompt<<EOF_PROMPT_9f3a1c'
+            cat /tmp/prompt.md
+            echo 'EOF_PROMPT_9f3a1c'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run Claude comment-response step
+        if: steps.pr.outputs.is_auto_docs == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: ${{ steps.build_prompt.outputs.prompt }}
+          claude_args: |
+            --max-turns 35
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(git log:*),Bash(git show:*),Bash(git diff:*),Bash(git branch:*)"
+
+      - name: Remove cloned context repos (never committed, not screenshotted)
+        if: steps.pr.outputs.is_auto_docs == 'true'
+        run: rm -rf repos
+
+      - name: Guardrail - confirm Claude only touched docs/ and comment-response.md
+        if: steps.pr.outputs.is_auto_docs == 'true'
+        id: guardrail
+        run: |
+          # -z (not plain --porcelain) — see auto-docs.yml for why: doc folder
+          # names contain spaces and git quotes any such path by default,
+          # which breaks naive parsing.
+          bad=0
+          changed=0
+          while IFS= read -r -d '' entry; do
+            status="${entry:0:2}"
+            f="${entry:3}"
+            case "$status" in
+              R*|C*) read -r -d '' _orig ;;
+            esac
+            changed=1
+            case "$f" in
+              docs/*|comment-response.md) ;;
+              *)
+                echo "::error::Unexpected file changed outside docs/: $f"
+                bad=1
+                ;;
+            esac
+          done < <(git status --porcelain -z)
+
+          if [ "$bad" = "1" ]; then
+            echo "Claude's changes touched files outside the allowed scope. Aborting without committing." >&2
+            exit 1
+          fi
+
+          has_doc_changes=$(git status --porcelain -z -- docs | tr -d '\0')
+          if [ -n "$has_doc_changes" ]; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Node
+        if: steps.pr.outputs.is_auto_docs == 'true' && steps.guardrail.outputs.has_changes == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: yarn
+
+      - name: Install dependencies
+        if: steps.pr.outputs.is_auto_docs == 'true' && steps.guardrail.outputs.has_changes == 'true'
+        run: yarn install --frozen-lockfile
+
+      - name: Install Playwright browser
+        if: steps.pr.outputs.is_auto_docs == 'true' && steps.guardrail.outputs.has_changes == 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Take screenshots and rewrite placeholders
+        if: steps.pr.outputs.is_auto_docs == 'true' && steps.guardrail.outputs.has_changes == 'true'
+        env:
+          GLIFIC_STAGING_URL: ${{ secrets.GLIFIC_STAGING_URL }}
+          GLIFIC_STAGING_PHONE: ${{ secrets.GLIFIC_STAGING_PHONE }}
+          GLIFIC_STAGING_PASSWORD: ${{ secrets.GLIFIC_STAGING_PASSWORD }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: node .github/scripts/take-screenshots.mjs
+
+      - name: Commit and push to the PR branch
+        if: steps.pr.outputs.is_auto_docs == 'true' && steps.guardrail.outputs.has_changes == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs
+          [ -d static/img/generated ] && git add static/img/generated
+          git commit -m "docs: address review feedback on PR #${{ github.event.issue.number }}"
+          git push origin "${{ steps.pr.outputs.head }}"
+
+      - name: Reply with what changed
+        if: steps.pr.outputs.is_auto_docs == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          gh pr comment "${{ github.event.issue.number }}" --body-file comment-response.md
+          rm -f comment-response.md
