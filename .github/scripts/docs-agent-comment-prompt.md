@@ -4,6 +4,8 @@ A reviewer commented:
 
 ${COMMENT_BODY}
 
+${LOCATION_CONTEXT}
+
 You are already checked out on that PR's branch, with the doc changes it introduced already
 present in the working tree. Two related product repositories have been cloned, read-only, as
 subdirectories of this working directory:

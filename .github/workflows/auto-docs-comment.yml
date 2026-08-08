@@ -1,13 +1,18 @@
 name: Auto Docs (PR feedback)
 
 # Fires when someone comments "@claude ..." on a PR the auto-docs pipeline
-# opened. Applies the requested change directly on the PR's existing branch
-# (no new PR) and replies with what it did. Restricted to auto-docs-labeled
-# PRs and to commenters with write access, so a random public comment can't
-# trigger it.
+# opened — either a general PR conversation comment (issue_comment) or an
+# inline review comment attached to a specific diff line
+# (pull_request_review_comment). Applies the requested change directly on
+# the PR's existing branch (no new PR) and replies with what it did — inline,
+# in the same thread, if that's how it was asked. Restricted to
+# auto-docs-labeled PRs and to commenters with write access, so a random
+# public comment can't trigger it.
 
 on:
   issue_comment:
+    types: [created]
+  pull_request_review_comment:
     types: [created]
 
 permissions:
@@ -19,7 +24,10 @@ permissions:
 jobs:
   respond:
     if: >
-      github.event.issue.pull_request != null &&
+      (
+        (github.event_name == 'issue_comment' && github.event.issue.pull_request != null) ||
+        github.event_name == 'pull_request_review_comment'
+      ) &&
       contains(github.event.comment.body, '@claude') &&
       github.event.comment.user.type != 'Bot' &&
       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
@@ -29,13 +37,14 @@ jobs:
         id: pr
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.issue.number }}
           GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         run: |
           # No checkout has happened yet at this point in the job, so there's
           # no .git dir for gh to infer the repo from — GH_REPO is required.
           head_ref=$(gh pr view "$PR_NUMBER" --json headRefName -q .headRefName)
           is_auto_docs=$(gh pr view "$PR_NUMBER" --json labels -q '[.labels[].name] | any(. == "auto-docs")')
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
           echo "head=$head_ref" >> "$GITHUB_OUTPUT"
           echo "is_auto_docs=$is_auto_docs" >> "$GITHUB_OUTPUT"
 
@@ -83,9 +92,23 @@ jobs:
         if: steps.pr.outputs.is_auto_docs == 'true'
         id: build_prompt
         env:
-          PR_NUMBER: ${{ github.event.issue.number }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
           COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_PATH: ${{ github.event.comment.path }}
+          COMMENT_LINE: ${{ github.event.comment.line || github.event.comment.original_line }}
+          COMMENT_DIFF_HUNK: ${{ github.event.comment.diff_hunk }}
         run: |
+          # Inline review comments (pull_request_review_comment) carry a
+          # file/line/diff_hunk; general PR comments (issue_comment) don't —
+          # give Claude an explicit, honest description of which kind this is
+          # rather than silently dropping the extra precision when present.
+          if [ -n "$COMMENT_PATH" ]; then
+            LOCATION_CONTEXT=$(printf 'This comment is attached to a specific line in the diff, not a general PR comment:\n- File: %s\n- Line: %s\n- Diff context:\n```\n%s\n```\n' "$COMMENT_PATH" "$COMMENT_LINE" "$COMMENT_DIFF_HUNK")
+          else
+            LOCATION_CONTEXT="This is a general comment on the PR, not attached to a specific file or line."
+          fi
+          export LOCATION_CONTEXT
+
           # Fetch the template from main rather than trusting it's on the PR's
           # own branch — a PR opened before this workflow existed won't have
           # it. Write to /tmp so it never touches this checkout's working
@@ -186,7 +209,7 @@ jobs:
           GLIFIC_STAGING_URL: ${{ secrets.GLIFIC_STAGING_URL }}
           GLIFIC_STAGING_PHONE: ${{ secrets.GLIFIC_STAGING_PHONE }}
           GLIFIC_STAGING_PASSWORD: ${{ secrets.GLIFIC_STAGING_PASSWORD }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_NUMBER: ${{ steps.pr.outputs.number }}
         run: node .github/scripts/take-screenshots.mjs
 
       - name: Commit and push to the PR branch
@@ -196,7 +219,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add docs
           [ -d static/img/generated ] && git add static/img/generated
-          git commit -m "docs: address review feedback on PR #${{ github.event.issue.number }}"
+          git commit -m "docs: address review feedback on PR #${{ steps.pr.outputs.number }}"
           git push origin "${{ steps.pr.outputs.head }}"
 
       - name: Reply with the result
@@ -208,10 +231,22 @@ jobs:
         if: always() && steps.pr.outputs.is_auto_docs == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          EVENT_NAME: ${{ github.event_name }}
+          COMMENT_ID: ${{ github.event.comment.id }}
         run: |
           if [ "${{ job.status }}" = "success" ] && [ -f comment-response.md ]; then
-            gh pr comment "${{ github.event.issue.number }}" --body-file comment-response.md
+            body_file=comment-response.md
           else
-            gh pr comment "${{ github.event.issue.number }}" --body "I wasn't able to apply that request — the run failed before finishing. Check the \"Auto Docs (PR feedback)\" Actions run on this repo for details. No changes were made to this PR."
+            printf '%s' 'I wasn'"'"'t able to apply that request — the run failed before finishing. Check the "Auto Docs (PR feedback)" Actions run on this repo for details. No changes were made to this PR.' > /tmp/fallback-reply.md
+            body_file=/tmp/fallback-reply.md
+          fi
+
+          if [ "$EVENT_NAME" = "pull_request_review_comment" ]; then
+            # Reply in the same inline thread instead of a general PR comment.
+            gh api "repos/${GH_REPO}/pulls/${PR_NUMBER}/comments/${COMMENT_ID}/replies" -f body="$(cat "$body_file")"
+          else
+            gh pr comment "$PR_NUMBER" --body-file "$body_file"
           fi
           rm -f comment-response.md 2>/dev/null || true
