@@ -1,6 +1,8 @@
-// Throwaway debugging script, NOT part of the pipeline. Verifies the staging
-// account can actually reach non-Chat routes (was previously blocked by a
-// Staff-role restriction in glific-frontend's AuthenticatedRoute.tsx).
+// Throwaway debugging script, NOT part of the pipeline. Finds a flow with a
+// "Wait for Response" node and dumps the flow-editor canvas DOM to find real,
+// usable selectors for the node and its config dialog — @glific/flow-editor
+// is a compiled third-party bundle with no data-testid in glific-frontend
+// source, so this has to come from live inspection instead.
 
 import { chromium } from "playwright";
 
@@ -39,57 +41,31 @@ async function login(page) {
   await page.waitForTimeout(2_000);
 }
 
-async function checkRoute(page, route) {
-  await page.goto(`${STAGING_URL}${route}`, { waitUntil: "load" });
-  await page.waitForTimeout(2_000);
-  const actualPath = new URL(page.url()).pathname.replace(/\/+$/, "");
-  const expectedPath = route.replace(/\/+$/, "");
-  const ok = actualPath === expectedPath;
-  console.log(`${ok ? "OK " : "FAIL"} ${route} -> landed on ${actualPath}`);
-  return ok;
-}
-
 async function main() {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 
   try {
     await login(page);
-    console.log("Logged in OK. Current URL:", page.url());
+    console.log("Logged in. URL:", page.url());
 
-    const authKeysAfterLogin = await page.evaluate(() =>
-      Object.keys(localStorage).filter((k) => /auth|session|token|user/i.test(k))
-    );
-    console.log("=== localStorage auth-related keys after login ===", authKeysAfterLogin);
-
-    await page.goto(`${STAGING_URL}/flow`, { waitUntil: "load" });
-    await page.waitForTimeout(2_000);
-    console.log("=== after goto /flow, URL ===", page.url());
-
-    const authKeysAfterNav = await page.evaluate(() =>
-      Object.keys(localStorage).filter((k) => /auth|session|token|user/i.test(k))
-    );
-    console.log("=== localStorage auth-related keys after nav to /flow ===", authKeysAfterNav);
-
-    const pageText = await page.evaluate(() => document.body.innerText.slice(0, 500));
-    console.log("=== body innerText at landing page (first 500 chars) ===");
-    console.log(pageText);
-
-    // Test theory: repeated hard reloads (page.goto) in quick succession
-    // invalidate the session (single-use refresh-token race?), independent
-    // of role. Go back to /chat via goto, then to /template via a client-side
-    // link click (no hard reload) instead of another goto.
-    await page.goto(`${STAGING_URL}/chat`, { waitUntil: "load" });
-    await page.waitForTimeout(3_000);
-    console.log("=== back on (via goto) ===", page.url());
-
-    await page.click('a[href="/template"]', { force: true, timeout: 8_000 });
-    await page.waitForTimeout(2_000);
-    console.log("=== /template via client-side link click -> URL ===", page.url());
-    console.log(
-      "=== body innerText after client-side nav (first 300 chars) ===",
-      await page.evaluate(() => document.body.innerText.slice(0, 300))
-    );
+    // Find flows via the GraphQL endpoint directly (avoids relying on UI
+    // list rendering / another route hop). Confirmed from glific-frontend
+    // source: token at localStorage.glific_session.access_token, endpoint is
+    // GLIFIC_API_URL (${backend}/api) directly, no /graphql suffix.
+    const flows = await page.evaluate(async () => {
+      const session = JSON.parse(localStorage.getItem("glific_session") || "{}");
+      const res = await fetch("/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", authorization: session.access_token || "" },
+        body: JSON.stringify({
+          query: `query { flows(filter: {}, opts: {limit: 20}) { id name } }`,
+        }),
+      });
+      return { status: res.status, body: await res.text() };
+    });
+    console.log("=== flows query result ===");
+    console.log(JSON.stringify(flows, null, 2));
   } finally {
     await browser.close();
   }
