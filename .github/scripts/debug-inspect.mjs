@@ -57,6 +57,24 @@ async function main() {
     await login(page);
     console.log("Logged in OK. Current URL:", page.url());
 
+    const authKeysAfterLogin = await page.evaluate(() =>
+      Object.keys(localStorage).filter((k) => /auth|session|token|user/i.test(k))
+    );
+    console.log("=== localStorage auth-related keys after login ===", authKeysAfterLogin);
+
+    await page.goto(`${STAGING_URL}/flow`, { waitUntil: "load" });
+    await page.waitForTimeout(2_000);
+    console.log("=== after goto /flow, URL ===", page.url());
+
+    const authKeysAfterNav = await page.evaluate(() =>
+      Object.keys(localStorage).filter((k) => /auth|session|token|user/i.test(k))
+    );
+    console.log("=== localStorage auth-related keys after nav to /flow ===", authKeysAfterNav);
+
+    const pageText = await page.evaluate(() => document.body.innerText.slice(0, 500));
+    console.log("=== body innerText at landing page (first 500 chars) ===");
+    console.log(pageText);
+
     const results = [];
     for (const route of ["/flow", "/template", "/speed-send"]) {
       results.push(await checkRoute(page, route));
