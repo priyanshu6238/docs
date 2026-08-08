@@ -69,15 +69,23 @@ async function main() {
     console.log("=== First 20 <a href> on page ===");
     console.log(JSON.stringify(anyLinks, null, 2));
 
-    const testIds = await page.evaluate(() =>
-      Array.from(document.querySelectorAll("[data-testid]")).slice(0, 40).map((el) => el.getAttribute("data-testid"))
+    const flowTestIds = await page.evaluate(() =>
+      Array.from(document.querySelectorAll("[data-testid]"))
+        .map((el) => el.getAttribute("data-testid"))
+        .filter((id) => /flow/i.test(id))
     );
-    console.log("=== First 40 data-testid on page ===");
-    console.log(JSON.stringify(testIds, null, 2));
+    console.log("=== data-testid containing 'flow' ===");
+    console.log(JSON.stringify(flowTestIds, null, 2));
 
-    const bodyText = await page.evaluate(() => document.body.innerText.slice(0, 1500));
-    console.log("=== First 1500 chars of body innerText ===");
-    console.log(bodyText);
+    const mainEl = await page.evaluate(() => {
+      const main = document.querySelector("main") || document.querySelector('[role="main"]');
+      return main ? main.innerText.slice(0, 2000) : "(no <main> or role=main found)";
+    });
+    console.log("=== <main> innerText (first 2000 chars) ===");
+    console.log(mainEl);
+
+    const bodyLen = await page.evaluate(() => document.body.innerText.length);
+    console.log("=== total body innerText length ===", bodyLen);
   } finally {
     await browser.close();
   }
