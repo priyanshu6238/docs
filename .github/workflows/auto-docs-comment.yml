@@ -184,10 +184,19 @@ jobs:
           git commit -m "docs: address review feedback on PR #${{ github.event.issue.number }}"
           git push origin "${{ steps.pr.outputs.head }}"
 
-      - name: Reply with what changed
-        if: steps.pr.outputs.is_auto_docs == 'true'
+      - name: Reply with the result
+        # always() because every earlier step (the guardrail, screenshot
+        # capture, the push) can fail without ever posting anything back —
+        # that's a silent failure from the commenter's point of view. job.status
+        # reflects whatever's happened so far, not just this step's neighbors,
+        # so it's the right gate for whether comment-response.md can be trusted.
+        if: always() && steps.pr.outputs.is_auto_docs == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          gh pr comment "${{ github.event.issue.number }}" --body-file comment-response.md
-          rm -f comment-response.md
+          if [ "${{ job.status }}" = "success" ] && [ -f comment-response.md ]; then
+            gh pr comment "${{ github.event.issue.number }}" --body-file comment-response.md
+          else
+            gh pr comment "${{ github.event.issue.number }}" --body "I wasn't able to apply that request — the run failed before finishing. Check the \"Auto Docs (PR feedback)\" Actions run on this repo for details. No changes were made to this PR."
+          fi
+          rm -f comment-response.md 2>/dev/null || true
