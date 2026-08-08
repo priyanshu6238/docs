@@ -1,0 +1,32 @@
+name: Debug Inspect (temporary)
+
+# Throwaway, manually-triggered workflow for investigating live DOM structure
+# that isn't visible in source (e.g. @glific/flow-editor, a compiled bundle).
+# Not part of the auto-docs pipeline. Delete this file once done.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: yarn
+
+      - run: yarn install --frozen-lockfile
+      - run: npx playwright install --with-deps chromium
+
+      - name: Run inspection script
+        env:
+          GLIFIC_STAGING_URL: ${{ secrets.GLIFIC_STAGING_URL }}
+          GLIFIC_STAGING_PHONE: ${{ secrets.GLIFIC_STAGING_PHONE }}
+          GLIFIC_STAGING_PASSWORD: ${{ secrets.GLIFIC_STAGING_PASSWORD }}
+        run: node .github/scripts/debug-inspect.mjs
