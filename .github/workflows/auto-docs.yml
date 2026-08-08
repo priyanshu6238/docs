@@ -109,7 +109,7 @@ jobs:
               R*|C*) read -r -d '' _orig ;; # renames/copies: consume the paired old-path entry
             esac
             case "$f" in
-              docs/*|pr-body.md) ;;
+              docs/*|pr-body.md|.github/screenshot-steps/*) ;;
               *)
                 echo "::error::Unexpected file changed outside docs/: $f"
                 bad=1

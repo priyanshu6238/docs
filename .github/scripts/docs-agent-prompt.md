@@ -33,6 +33,19 @@ Your task:
    - <app-route-path> is the in-app route to screenshot, starting with "/" (e.g.
      "/flow/configure/123").
    - Only add these where a screenshot genuinely helps the reader; no more than 3.
+   - If the target needs more than "load the route and shoot" — a dialog behind a
+     button click, a dropdown selection, text typed into a field — also create
+     `.github/screenshot-steps/<short-slug>.json` (same slug as the placeholder), an
+     array of steps run in order after the route loads and before the screenshot:
+     `{"click": "<selector>"}`, `{"fill": {"selector": "<selector>", "text": "<text>"}}`,
+     `{"wait": "<selector>"}`, `{"waitText": "<visible text>"}`, `{"sleep": <ms>}`.
+     Determine every selector by reading the actual component in
+     `repos/glific-frontend/src/containers/.../*.tsx` and using a real `data-testid`
+     you found there — never guess a selector you haven't seen in source. If the target
+     is rendered by something with no stable selector available in source (e.g. a
+     dynamically-generated canvas node in the flow editor), don't write a steps file
+     that's likely to just fail at runtime — skip that placeholder, leave the doc text
+     without it, and say why in your PR description instead.
 
 5. If, after investigating, this issue does not actually require a documentation change,
    make NO file changes and instead write exactly the word "SKIP" as the first line of
@@ -42,8 +55,8 @@ Your task:
    referencing the issue) to pr-body.md at the repo root. Body text only, no title.
 
 Constraints:
-- Only create or edit files under docs/, plus the single file pr-body.md at the repo
-  root. Do not touch workflow files, package.json, static/img/generated/, or anything
-  under repos/.
+- Only create or edit files under docs/, plus pr-body.md at the repo root and, if
+  needed, .github/screenshot-steps/*.json. Do not touch workflow files, package.json,
+  static/img/generated/, or anything under repos/.
 - Do not invent product behavior you can't find evidence for in the two repos; if
   uncertain, note the uncertainty in the doc text rather than guessing confidently.

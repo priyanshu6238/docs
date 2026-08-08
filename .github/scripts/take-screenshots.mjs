@@ -8,10 +8,19 @@
 // in glific-frontend: the field names are "phoneNumber" and "password", and the submit
 // button is data-testid="SubmitButton"; login finishes with a hard page redirect away
 // from /login rather than client-side routing).
+//
+// A placeholder can optionally be paired with an interaction-steps file at
+// .github/screenshot-steps/<slug>.json (an array of {click|fill|wait|waitText|sleep}
+// steps, run in order after navigating to the route and before the screenshot) for
+// anything that needs more than "navigate and shoot" — a dialog behind a button click,
+// a dropdown selection, typing into a field. See runStep() below for the exact schema.
+// Claude determines selectors by reading data-testid attributes in glific-frontend
+// source, never by guessing blind. The steps file is deleted after use — it's a
+// build-time instruction, not something that belongs in the committed doc.
 
 import { execSync } from "node:child_process";
 import { chromium } from "playwright";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, relative } from "node:path";
 
 const STAGING_URL = requireEnv("GLIFIC_STAGING_URL").replace(/\/+$/, "");
@@ -20,6 +29,7 @@ const PASSWORD = requireEnv("GLIFIC_STAGING_PASSWORD");
 const ISSUE_NUMBER = requireEnv("ISSUE_NUMBER");
 
 const PLACEHOLDER_RE = /!\[\]\(SCREENSHOT:([a-z0-9-]+):([^)]+)\)/g;
+const STEPS_DIR = ".github/screenshot-steps";
 
 function requireEnv(name) {
   const value = process.env[name];
@@ -126,6 +136,32 @@ async function login(page) {
   await page.waitForTimeout(2_000);
 }
 
+// Step schema (one recognized key per step object):
+//   { "click": "<css selector>" }
+//   { "fill": { "selector": "<css selector>", "text": "<text>" } }
+//   { "wait": "<css selector>" }               — wait for it to appear
+//   { "waitText": "<visible text>" }            — wait for it anywhere on the page
+//   { "sleep": <ms> }                           — last resort; prefer wait/waitText
+async function runStep(page, step) {
+  if (step.click !== undefined) {
+    await page.click(step.click, { timeout: 8_000 });
+  } else if (step.fill !== undefined) {
+    await page.fill(step.fill.selector, step.fill.text, { timeout: 8_000 });
+  } else if (step.wait !== undefined) {
+    await page.waitForSelector(step.wait, { timeout: 8_000 });
+  } else if (step.waitText !== undefined) {
+    await page.waitForFunction(
+      (text) => document.body.innerText.includes(text),
+      step.waitText,
+      { timeout: 8_000 }
+    );
+  } else if (step.sleep !== undefined) {
+    await page.waitForTimeout(step.sleep);
+  } else {
+    throw new Error(`Unrecognized screenshot step: ${JSON.stringify(step)}`);
+  }
+}
+
 async function main() {
   const files = changedDocFiles();
   const placeholders = findPlaceholders(files);
@@ -154,6 +190,16 @@ async function main() {
       // chat WebSocket means networkidle would never resolve.
       await page.goto(`${STAGING_URL}${route}`, { waitUntil: "load" });
       await page.waitForTimeout(2_000);
+
+      const stepsPath = `${STEPS_DIR}/${slug}.json`;
+      if (existsSync(stepsPath)) {
+        const steps = JSON.parse(readFileSync(stepsPath, "utf8"));
+        console.log(`  Running ${steps.length} interaction step(s) from ${stepsPath}`);
+        for (const step of steps) {
+          await runStep(page, step);
+        }
+      }
+
       await page.screenshot({ path: outPath });
 
       const markdown = `![${slug}](${relativeImagePath(file, outPath)})`;
@@ -169,6 +215,9 @@ async function main() {
       }
       writeFileSync(file, content);
     }
+
+    // Build-time instructions only — never belong in the committed doc.
+    rmSync(STEPS_DIR, { recursive: true, force: true });
   } finally {
     await browser.close();
   }
