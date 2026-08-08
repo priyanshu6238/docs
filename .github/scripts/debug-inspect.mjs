@@ -56,14 +56,19 @@ async function main() {
     console.log("=== /flow URL ===", page.url());
 
     const flowRows = await page.evaluate(() => {
-      const candidates = Array.from(document.querySelectorAll('[data-testid], tr, [role="row"]'));
-      return candidates
-        .map((el) => el.textContent?.trim())
-        .filter((t) => t && t.length > 0 && t.length < 200)
-        .slice(0, 40);
+      const candidates = Array.from(document.querySelectorAll('tr, [role="row"]'));
+      return candidates.map((el) => el.textContent?.trim()).filter((t) => t && t.length > 0);
     });
-    console.log("=== text content of candidate flow-list elements ===");
+    console.log("=== text content of tr/[role=row] elements ===");
     console.log(JSON.stringify(flowRows, null, 2));
+
+    const flowHrefs = await page.evaluate(() =>
+      Array.from(document.querySelectorAll("a[href]"))
+        .map((a) => a.getAttribute("href"))
+        .filter((h) => h && (h.includes("/flow/") || h.includes("edit") || h.includes("configure")))
+    );
+    console.log("=== links pointing at a flow ===");
+    console.log(JSON.stringify(flowHrefs, null, 2));
   } finally {
     await browser.close();
   }
