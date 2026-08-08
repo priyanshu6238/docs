@@ -45,41 +45,25 @@ async function main() {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 
-  let graphqlUrl = null;
-  page.on("request", (req) => {
-    if (req.method() === "POST" && !graphqlUrl && /graphql|\/api\b/i.test(req.url())) {
-      graphqlUrl = req.url();
-    }
-  });
-
   try {
     await login(page);
     console.log("Logged in. URL:", page.url());
 
-    // Let the chat page make its normal GraphQL calls so we can observe the
-    // real endpoint instead of guessing it (frontend/backend aren't
-    // same-origin here — a relative /api 405'd).
+    // Just read the flow list straight off the rendered page — no need for
+    // the API detour, /flow is reachable now.
+    await page.goto(`${STAGING_URL}/flow`, { waitUntil: "load" });
     await page.waitForTimeout(3_000);
-    console.log("=== observed GraphQL endpoint ===", graphqlUrl);
+    console.log("=== /flow URL ===", page.url());
 
-    if (!graphqlUrl) {
-      console.log("No GraphQL request observed yet — nothing else to do.");
-      return;
-    }
-
-    const flows = await page.evaluate(async (url) => {
-      const session = JSON.parse(localStorage.getItem("glific_session") || "{}");
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", authorization: session.access_token || "" },
-        body: JSON.stringify({
-          query: `query { flows(filter: {}, opts: {limit: 20}) { id name } }`,
-        }),
-      });
-      return { status: res.status, body: await res.text() };
-    }, graphqlUrl);
-    console.log("=== flows query result ===");
-    console.log(JSON.stringify(flows, null, 2));
+    const flowRows = await page.evaluate(() => {
+      const candidates = Array.from(document.querySelectorAll('[data-testid], tr, [role="row"]'));
+      return candidates
+        .map((el) => el.textContent?.trim())
+        .filter((t) => t && t.length > 0 && t.length < 200)
+        .slice(0, 40);
+    });
+    console.log("=== text content of candidate flow-list elements ===");
+    console.log(JSON.stringify(flowRows, null, 2));
   } finally {
     await browser.close();
   }
