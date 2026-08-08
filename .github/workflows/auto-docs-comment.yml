@@ -36,7 +36,7 @@ jobs:
       - name: Look up the PR this comment is on
         id: pr
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         run: |
@@ -53,6 +53,9 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ steps.pr.outputs.head }}
+          # A personal access token, not the default GITHUB_TOKEN — see
+          # auto-docs.yml's "Checkout docs" step for why.
+          token: ${{ secrets.GH_PAT }}
 
       - name: Checkout glific (backend, read-only context)
         if: steps.pr.outputs.is_auto_docs == 'true'
@@ -230,7 +233,7 @@ jobs:
         # so it's the right gate for whether comment-response.md can be trusted.
         if: always() && steps.pr.outputs.is_auto_docs == 'true'
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           EVENT_NAME: ${{ github.event_name }}
