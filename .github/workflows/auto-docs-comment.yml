@@ -249,8 +249,14 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           COMMENT_ID: ${{ github.event.comment.id }}
         run: |
-          if [ "${{ job.status }}" = "success" ] && [ -f comment-response.md ]; then
+          if [ -f comment-response.md ]; then
             body_file=comment-response.md
+          elif [ "${{ job.status }}" = "success" ]; then
+            # Claude finished without error but didn't write the file it was
+            # asked to — don't claim "the run failed" when it didn't; that's
+            # just false and has actually happened in testing.
+            printf '%s' "I finished looking at that but didn't leave a written explanation — check the \"Auto Docs (PR feedback)\" Actions run on this repo for what I actually did (most likely: no doc change was needed)." > /tmp/fallback-reply.md
+            body_file=/tmp/fallback-reply.md
           else
             printf '%s' 'I wasn'"'"'t able to apply that request — the run failed before finishing. Check the "Auto Docs (PR feedback)" Actions run on this repo for details. No changes were made to this PR.' > /tmp/fallback-reply.md
             body_file=/tmp/fallback-reply.md
