@@ -30,7 +30,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.issue.number }}
+          GH_REPO: ${{ github.repository }}
         run: |
+          # No checkout has happened yet at this point in the job, so there's
+          # no .git dir for gh to infer the repo from — GH_REPO is required.
           head_ref=$(gh pr view "$PR_NUMBER" --json headRefName -q .headRefName)
           is_auto_docs=$(gh pr view "$PR_NUMBER" --json labels -q '[.labels[].name] | any(. == "auto-docs")')
           echo "head=$head_ref" >> "$GITHUB_OUTPUT"
