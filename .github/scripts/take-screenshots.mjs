@@ -191,6 +191,20 @@ async function main() {
       await page.goto(`${STAGING_URL}${route}`, { waitUntil: "load" });
       await page.waitForTimeout(2_000);
 
+      // The app can silently redirect elsewhere (a route needing a feature
+      // flag/permission this account doesn't have, or just not existing,
+      // falling back to a default landing page) — page.goto() succeeds
+      // either way, so without this check a capture of the WRONG page looks
+      // identical to a correct one. Caught in practice: three "Template
+      // Library" screenshots that were all silently the Chats page instead.
+      const expectedPath = new URL(route, STAGING_URL).pathname.replace(/\/+$/, "");
+      const actualPath = new URL(page.url()).pathname.replace(/\/+$/, "");
+      if (actualPath !== expectedPath) {
+        throw new Error(
+          `Navigating to ${route} silently redirected to ${actualPath} instead of staying there — refusing to screenshot the wrong page. Likely causes: the route doesn't exist, needs a feature flag/permission this staging account doesn't have, or the app fell back to its default landing page.`
+        );
+      }
+
       const stepsPath = `${STEPS_DIR}/${slug}.json`;
       if (existsSync(stepsPath)) {
         const steps = JSON.parse(readFileSync(stepsPath, "utf8"));
