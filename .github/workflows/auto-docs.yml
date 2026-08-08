@@ -158,8 +158,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
           branch="docs/auto-${ISSUE_NUMBER}"
+          # The branch name is deterministic (one per issue), so re-labeling
+          # the same issue re-runs this from a fresh main checkout and would
+          # collide with whatever an earlier run already pushed. Rather than
+          # overwrite that earlier attempt, open a distinctly-named branch
+          # and a separate PR instead.
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            branch="docs/auto-${ISSUE_NUMBER}-${RUN_NUMBER}"
+          fi
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
@@ -178,7 +189,7 @@ jobs:
           rm -f pr-body.md
 
           gh pr create \
-            --title "docs: update from issue #${ISSUE_NUMBER}" \
+            --title "docs: ${ISSUE_TITLE}" \
             --body-file /tmp/pr-body-final.md \
             --label auto-docs \
             --base main \
