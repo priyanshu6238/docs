@@ -68,7 +68,8 @@ async function main() {
       return;
     }
 
-    const graphqlUrl = uniqueApiHosts[0];
+    const graphqlUrl = uniqueApiHosts.find((u) => /\/api\/?$/.test(u)) || uniqueApiHosts[0];
+    console.log("Using GraphQL endpoint:", graphqlUrl);
     const flows = await page.evaluate(async (url) => {
       const session = JSON.parse(localStorage.getItem("glific_session") || "{}");
       const res = await fetch(url, {
