@@ -49,10 +49,19 @@ async function main() {
     await login(page);
     console.log("Logged in OK. Current URL:", page.url());
 
-    // Step 1: find a flow to open. List flows via the /flow page.
+    // Step 1: try a hard page.goto() to /flow (what take-screenshots.mjs does).
     await page.goto(`${STAGING_URL}/flow`, { waitUntil: "load" });
     await page.waitForTimeout(2_000);
-    console.log("=== /flow page URL after nav ===", page.url());
+    console.log("=== /flow via page.goto() -> URL after nav ===", page.url());
+
+    // Step 2: from wherever that landed, click the sidebar's Flows link instead
+    // (client-side SPA navigation) and see if that actually works.
+    await page.goto(`${STAGING_URL}/chat`, { waitUntil: "load" });
+    await page.waitForTimeout(2_000);
+    console.log("=== back on ===", page.url());
+    await page.click('a[href="/flow"]');
+    await page.waitForTimeout(2_000);
+    console.log("=== /flow via sidebar click -> URL after nav ===", page.url());
 
     const flowLinks = await page.evaluate(() => {
       const rows = Array.from(document.querySelectorAll("a[href*='/flow/configure/']"));
