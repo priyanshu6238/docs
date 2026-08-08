@@ -49,11 +49,17 @@ async function main() {
     await login(page);
     console.log("Logged in. URL:", page.url());
 
+    const roleAfterLogin = await page.evaluate(() => localStorage.getItem("role"));
+    console.log("=== localStorage 'role' right after login ===", roleAfterLogin);
+
     // Just read the flow list straight off the rendered page — no need for
     // the API detour, /flow is reachable now.
     await page.goto(`${STAGING_URL}/flow`, { waitUntil: "load" });
     await page.waitForTimeout(3_000);
     console.log("=== /flow URL ===", page.url());
+
+    const roleAfterNav = await page.evaluate(() => localStorage.getItem("role"));
+    console.log("=== localStorage 'role' after nav to /flow ===", roleAfterNav);
 
     await page.screenshot({ path: "flow-list.png", fullPage: true });
     console.log("Saved flow-list.png");
