@@ -57,6 +57,14 @@ separate `glific/glific` (backend) and `glific/glific-frontend` (frontend) repos
 - In that workflow, screenshot placeholders use the form
   `![](SCREENSHOT:<slug>:<route-path>)` inside the doc source — the screenshot script
   replaces these after capture. Don't use this placeholder syntax outside that pipeline.
+  If the target needs interaction beyond "load the route and shoot" (a dialog behind a
+  button click, a dropdown, typed text), pair it with
+  `.github/screenshot-steps/<slug>.json` — an array of `{click|fill|wait|waitText|sleep}`
+  steps run before the screenshot, deleted afterward (never committed). Selectors in
+  that file must come from a real `data-testid` Claude found in `glific-frontend`
+  source, never a guess — for targets with no stable selector in source (e.g. a
+  dynamically-generated flow-editor canvas node), the correct move is to skip the
+  screenshot and say why, not write a steps file likely to fail at runtime.
 - `.github/workflows/auto-docs-comment.yml` handles follow-up: commenting `@claude ...`
   on a PR the pipeline opened (must carry the `auto-docs` label, and the commenter needs
   write access) re-invokes Claude on that PR's branch with the comment as the prompt. Works

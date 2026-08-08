@@ -24,6 +24,18 @@ Your task:
    in CLAUDE.md: `![](SCREENSHOT:<short-slug>:<app-route-path>)` — a later automated step replaces
    it with a real image captured from the running app. Do not invent or guess an image path.
 
+   If the target needs more than "load the route and shoot" — a dialog behind a button click, a
+   dropdown selection, text typed into a field — also create
+   `.github/screenshot-steps/<short-slug>.json` (same slug as the placeholder), an array of steps
+   run in order after the route loads and before the screenshot:
+   `{"click": "<selector>"}`, `{"fill": {"selector": "<selector>", "text": "<text>"}}`,
+   `{"wait": "<selector>"}`, `{"waitText": "<visible text>"}`, `{"sleep": <ms>}`. Determine every
+   selector by reading the actual component in `repos/glific-frontend/src/containers/.../*.tsx`
+   and using a real `data-testid` you found there — never guess a selector you haven't seen in
+   source. If the target has no stable selector available in source (e.g. a dynamically-generated
+   canvas node in the flow editor), don't write a steps file likely to just fail at runtime — skip
+   the screenshot and say why in your comment-response.md reply instead.
+
 4. Write a one-to-three sentence reply to `comment-response.md` at the repo root, describing what
    you changed. If the comment didn't actually require a doc change (e.g. it was a question, the
    doc was already correct, or you determined the request isn't achievable — such as a screenshot
@@ -37,7 +49,8 @@ Your task:
    doesn't exist when you finish, the commenter gets no reply at all.
 
 Constraints:
-- Only edit files under docs/, plus the single file comment-response.md at the repo root. Do not
-  touch workflow files, package.json, static/img/generated/, or anything under repos/.
+- Only edit files under docs/, plus comment-response.md at the repo root and, if needed,
+  .github/screenshot-steps/*.json. Do not touch workflow files, package.json,
+  static/img/generated/, or anything under repos/.
 - Do not invent product behavior you can't find evidence for in the two repos; if uncertain, say
   so in your reply rather than guessing confidently.
