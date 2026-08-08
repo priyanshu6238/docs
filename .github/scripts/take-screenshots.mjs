@@ -205,6 +205,22 @@ async function main() {
         );
       }
 
+      // The URL can also be "correct" while the app renders Chat underneath
+      // it anyway — seen in practice on both /template and /flow/configure/:uuid.
+      // A URL match alone doesn't prove the right content loaded, so also
+      // check for Chat's own distinguishing marker when it isn't what was asked for.
+      if (!expectedPath.startsWith("/chat")) {
+        const showingChatInstead = await page
+          .locator('input[placeholder="Type a message..."]')
+          .isVisible()
+          .catch(() => false);
+        if (showingChatInstead) {
+          throw new Error(
+            `Navigating to ${route} kept the URL but rendered the Chat interface underneath it — refusing to screenshot the wrong page. Likely the same feature flag/permission/build issue as the URL-redirect case, just without an actual URL change.`
+          );
+        }
+      }
+
       const stepsPath = `${STEPS_DIR}/${slug}.json`;
       if (existsSync(stepsPath)) {
         const steps = JSON.parse(readFileSync(stepsPath, "utf8"));
