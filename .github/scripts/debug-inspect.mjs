@@ -73,9 +73,12 @@ async function main() {
     consoleMessages.length = 0;
     failedRequests.length = 0;
     await page.goto(`${STAGING_URL}/flow/configure/${flowUuid.uuid}`, { waitUntil: "load" });
-    await page.waitForTimeout(8_000);
-    console.log("=== flow editor URL ===", page.url());
-    await page.screenshot({ path: "flow-editor-canvas.png", fullPage: false });
+
+    for (const seconds of [5, 10, 20, 30]) {
+      await page.waitForTimeout(seconds === 5 ? 5_000 : 5_000);
+      await page.screenshot({ path: `flow-editor-${seconds}s.png`, fullPage: false });
+      console.log(`Saved flow-editor-${seconds}s.png, URL now:`, page.url());
+    }
 
     console.log("=== console messages during flow editor nav ===");
     console.log(consoleMessages.slice(0, 60).join("\n"));
