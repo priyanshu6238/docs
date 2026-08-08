@@ -59,7 +59,7 @@ async function main() {
     await page.goto(`${STAGING_URL}/chat`, { waitUntil: "load" });
     await page.waitForTimeout(2_000);
     console.log("=== back on ===", page.url());
-    await page.click('a[href="/flow"]');
+    await page.click('a[href="/flow"]', { force: true, timeout: 8_000 });
     await page.waitForTimeout(2_000);
     console.log("=== /flow via sidebar click -> URL after nav ===", page.url());
 
